@@ -1,6 +1,7 @@
 package lib
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -14,26 +15,50 @@ import (
 
 type Bw struct {
 	Session string
+	Folder  Folder
 	Flags   *cobra.Command
 }
 
-func (bw *Bw) ListFolders() string {
+func (bw *Bw) ListFolders() error {
 	result := bw.ExecuteCommand("list folders --session " + bw.Session)
 
-	return result
+	var folders []Folder
+	json.Unmarshal([]byte(result), &folders)
+
+	templates := &promptui.SelectTemplates{
+
+		Label:    "Select folder where ssh keys are stored",
+		Active:   "  {{ .Name | green | bold }}",
+		Inactive: "{{ .Name | bgBlack }}",
+		Selected: "{{ .Name | green }}",
+	}
+	prompt := promptui.Select{
+		Items:        folders,
+		Templates:    templates,
+		Size:         6,
+		HideSelected: true,
+	}
+	i, _, err := prompt.Run()
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+	bw.Folder = folders[i]
+	return nil
 }
 
 func (bw *Bw) Unlock() error {
 	verbose, _ := bw.Flags.Flags().GetBool("verbose")
 
 	prompt := promptui.Prompt{
-		Label:       "Master password",
+		Label:       "Master Password",
 		HideEntered: true,
 		Mask:        ' ',
 	}
 	password, _ := prompt.Run()
 	if verbose {
-		fmt.Println("Password: " + password)
+		fmt.Println(color.MagentaString("command:"), "Master Password")
+		fmt.Println(color.CyanString("output:"), password)
 	}
 	session := bw.ExecuteCommand("unlock --raw --passwordenv BW_PASSWORD", "BW_PASSWORD="+password)
 	if session == "Invalid master password." {
@@ -44,17 +69,12 @@ func (bw *Bw) Unlock() error {
 	return nil
 }
 
-func (bw *Bw) CheckLogin() (bool, error) {
-	loginStatus := bw.ExecuteCommand("login --check")
-	if loginStatus == "You are logged in!" {
-		color.Green(loginStatus)
-	} else if loginStatus == "You are not logged in." {
-		color.Red(loginStatus)
-	} else {
-		color.Red(loginStatus)
-		return false, errors.New(loginStatus)
-	}
-	return loginStatus == "You are logged in!", nil
+func (bw *Bw) CheckStatus() string {
+	result := bw.ExecuteCommand("status")
+	var bwStatus map[string]interface{}
+	json.Unmarshal([]byte(result), &bwStatus)
+
+	return bwStatus["status"].(string)
 }
 
 func (bw Bw) ExecuteCommand(command string, env ...string) string {
@@ -67,8 +87,8 @@ func (bw Bw) ExecuteCommand(command string, env ...string) string {
 	cmdOutput, _ := cmd.CombinedOutput()
 	result := string(cmdOutput[:])
 	if verbose {
-		fmt.Println("command:", command)
-		fmt.Println("output:", result)
+		fmt.Println(color.MagentaString("command:"), command)
+		fmt.Println(color.CyanString("output:"), result)
 	}
 	return result
 }

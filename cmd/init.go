@@ -5,15 +5,13 @@ package cmd
 
 import (
 	"bytes"
-	"encoding/json"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"strings"
 
 	"github.com/Eddayy/bwssh/lib"
-	"github.com/manifoldco/promptui"
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
 
@@ -33,17 +31,13 @@ to quickly create a Cobra application.`,
 		bw := lib.Bw{Flags: cmd}
 
 		// check if login already
-
-		isLogin, err := bw.CheckLogin()
-		if err != nil {
-			return
-		}
-
-		if isLogin {
+		bwStatus := bw.CheckStatus()
+		if bwStatus == "locked" {
 			if err := bw.Unlock(); err != nil {
 				return
 			}
-		} else {
+		} else if bwStatus == "unauthenticated" {
+			color.Red(bwStatus)
 			var loginCommandBuffer bytes.Buffer
 			loginCommand := exec.Command("bw", "login", "--raw")
 			loginCommand.Stdin = os.Stdin
@@ -53,41 +47,18 @@ to quickly create a Cobra application.`,
 			loginCommandOutput := strings.Split(string(loginCommandBuffer.String()), "\n")
 
 			bw.Session = loginCommandOutput[len(loginCommandOutput)-1]
-		}
+			color.Green("\nAuthenticated")
 
-		var folders []lib.Folder
-		json.Unmarshal([]byte(bw.ListFolders()), &folders)
-
-		templates := &promptui.SelectTemplates{
-
-			Label:    "Select folder where ssh keys are stored",
-			Active:   "  {{ .Name | green | bold }}",
-			Inactive: "{{ .Name | bgBlack }}",
-			Selected: "{{ .Name | green }}",
-		}
-		prompt := promptui.Select{
-			Items:        folders,
-			Templates:    templates,
-			Size:         6,
-			HideSelected: true,
-		}
-		i, _, err := prompt.Run()
-		if err != nil {
-			fmt.Println(err)
+		} else if bwStatus != "locked" {
+			color.Red("Error: " + bwStatus)
 			return
 		}
 
-		fmt.Println(folders[i])
+		if err := bw.ListFolders(); err != nil {
+			return
+		}
+		color.Green("Setup all done!")
 	},
-}
-
-func prompt(arg string) string {
-	prompt := promptui.Prompt{
-		Label: arg,
-	}
-
-	result, _ := prompt.Run()
-	return result
 }
 
 func init() {
