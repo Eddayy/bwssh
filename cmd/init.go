@@ -5,6 +5,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -12,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/Eddayy/bwssh/lib"
-	"github.com/fatih/color"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
@@ -28,9 +28,8 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		verbose, _ := cmd.Flags().GetBool("verbose")
+		// verbose, _ := cmd.Flags().GetBool("verbose")
 
-		var session string
 		bw := lib.Bw{Flags: cmd}
 
 		// check if login already
@@ -41,27 +40,8 @@ to quickly create a Cobra application.`,
 		}
 
 		if isLogin {
-			prompt := promptui.Prompt{
-				Label: "Master password",
-				Mask:  ' ',
-			}
-			password, _ := prompt.Run()
-			if verbose {
-				fmt.Println("Password: " + password)
-			}
-			cmd_line := "unlock --raw --passwordenv BW_PASSWORD"
-			cmd := exec.Command("bw", strings.Split(cmd_line, " ")...)
-			cmd.Env = os.Environ()
-			cmd.Env = append(cmd.Env, "BW_PASSWORD="+password)
-			cmdOutput, _ := cmd.CombinedOutput()
-			session = string(cmdOutput[:])
-			if session == "Invalid master password." {
-				color.Red((session))
+			if err := bw.Unlock(); err != nil {
 				return
-			}
-			if verbose {
-				fmt.Println("command:", cmd_line)
-				fmt.Println("output:", session)
 			}
 		} else {
 			var loginCommandBuffer bytes.Buffer
@@ -72,17 +52,32 @@ to quickly create a Cobra application.`,
 			_ = loginCommand.Run()
 			loginCommandOutput := strings.Split(string(loginCommandBuffer.String()), "\n")
 
-			session = loginCommandOutput[len(loginCommandOutput)-1]
+			bw.Session = loginCommandOutput[len(loginCommandOutput)-1]
 		}
-		bw.Session = session
 
-		fmt.Println("test", bw.ListFolders())
-		// bw_login.Stdin = os.Stdin
-		// bw_login.Stdout = os.Stdout
-		// bw_login.Stderr = os.Stderr
+		var folders []lib.Folder
+		json.Unmarshal([]byte(bw.ListFolders()), &folders)
 
-		// Validate if keys are correct
-		//#color.Red("client_id or client_secret was incorrect!")
+		templates := &promptui.SelectTemplates{
+
+			Label:    "Select folder where ssh keys are stored",
+			Active:   "  {{ .Name | green | bold }}",
+			Inactive: "{{ .Name | bgBlack }}",
+			Selected: "{{ .Name | green }}",
+		}
+		prompt := promptui.Select{
+			Items:        folders,
+			Templates:    templates,
+			Size:         6,
+			HideSelected: true,
+		}
+		i, _, err := prompt.Run()
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		fmt.Println(folders[i])
 	},
 }
 
