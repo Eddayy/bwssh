@@ -4,8 +4,15 @@ Copyright © 2022 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"strings"
 
+	"github.com/Eddayy/bwssh/lib"
+	"github.com/fatih/color"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 )
@@ -23,27 +30,67 @@ to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		verbose, _ := cmd.Flags().GetBool("verbose")
 
-		fmt.Println("Enter client_id and client_secret")
-		fmt.Println("Learn more: https://bitwarden.com/help/personal-api-key/")
+		var session string
+		bw := lib.Bw{Flags: cmd}
 
-		client_id := prompt("client_id")
-		client_secret := prompt("client_secret")
+		// check if login already
 
-		if verbose {
-			fmt.Println("client_id:", client_id)
-			fmt.Println("client_secret:", client_secret)
+		isLogin, err := bw.CheckLogin()
+		if err != nil {
+			return
 		}
 
+		if isLogin {
+			prompt := promptui.Prompt{
+				Label: "Master password",
+				Mask:  ' ',
+			}
+			password, _ := prompt.Run()
+			if verbose {
+				fmt.Println("Password: " + password)
+			}
+			cmd_line := "unlock --raw --passwordenv BW_PASSWORD"
+			cmd := exec.Command("bw", strings.Split(cmd_line, " ")...)
+			cmd.Env = os.Environ()
+			cmd.Env = append(cmd.Env, "BW_PASSWORD="+password)
+			cmdOutput, _ := cmd.CombinedOutput()
+			session = string(cmdOutput[:])
+			if session == "Invalid master password." {
+				color.Red((session))
+				return
+			}
+			if verbose {
+				fmt.Println("command:", cmd_line)
+				fmt.Println("output:", session)
+			}
+		} else {
+			var loginCommandBuffer bytes.Buffer
+			loginCommand := exec.Command("bw", "login", "--raw")
+			loginCommand.Stdin = os.Stdin
+			loginCommand.Stdout = io.MultiWriter(&loginCommandBuffer, os.Stdout)
+			loginCommand.Stderr = io.MultiWriter(&loginCommandBuffer, os.Stderr)
+			_ = loginCommand.Run()
+			loginCommandOutput := strings.Split(string(loginCommandBuffer.String()), "\n")
+
+			session = loginCommandOutput[len(loginCommandOutput)-1]
+		}
+		bw.Session = session
+
+		fmt.Println("test", bw.ListFolders())
+		// bw_login.Stdin = os.Stdin
+		// bw_login.Stdout = os.Stdout
+		// bw_login.Stderr = os.Stderr
+
 		// Validate if keys are correct
-		
+		//#color.Red("client_id or client_secret was incorrect!")
 	},
 }
 
 func prompt(arg string) string {
 	prompt := promptui.Prompt{
 		Label: arg,
-		Mask:  '*',
 	}
+
 	result, _ := prompt.Run()
 	return result
 }
