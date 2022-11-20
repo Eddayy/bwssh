@@ -11,6 +11,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 type Bw struct {
@@ -20,7 +21,7 @@ type Bw struct {
 }
 
 func (bw *Bw) ListFolders() error {
-	result := bw.ExecuteCommand("list folders --session " + bw.Session)
+	result := bw.ExecuteCommand("list folders")
 
 	var folders []Folder
 	json.Unmarshal([]byte(result), &folders)
@@ -44,6 +45,8 @@ func (bw *Bw) ListFolders() error {
 		return err
 	}
 	bw.Folder = folders[i]
+	viper.Set("folder_id", folders[i].Id)
+	viper.WriteConfig()
 	return nil
 }
 
@@ -65,6 +68,10 @@ func (bw *Bw) Unlock() error {
 		color.Red((session))
 		return errors.New(session)
 	}
+
+	viper.Set("BW_SESSION", session)
+	viper.WriteConfig()
+	bw.CheckStatus()
 	bw.Session = session
 	return nil
 }
@@ -74,16 +81,28 @@ func (bw *Bw) CheckStatus() string {
 	var bwStatus map[string]interface{}
 	json.Unmarshal([]byte(result), &bwStatus)
 
+	if bwStatus["status"].(string) != "unlocked" {
+		viper.Set("BW_SESSION", "")
+		viper.WriteConfig()
+	}
+
 	return bwStatus["status"].(string)
 }
 
 func (bw Bw) ExecuteCommand(command string, env ...string) string {
 	verbose, _ := bw.Flags.Flags().GetBool("verbose")
+
 	cmd := exec.Command("bw", strings.Split(command, " ")...)
 	cmd.Env = os.Environ()
+	bwSession := viper.Get("BW_SESSION")
+	if bwSession != nil {
+		cmd.Env = append(cmd.Env, "BW_SESSION="+bwSession.(string))
+	}
+
 	for _, element := range env {
 		cmd.Env = append(cmd.Env, element)
 	}
+
 	cmdOutput, _ := cmd.CombinedOutput()
 	result := string(cmdOutput[:])
 	if verbose {

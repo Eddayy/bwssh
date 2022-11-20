@@ -5,6 +5,8 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -13,6 +15,7 @@ import (
 	"github.com/Eddayy/bwssh/lib"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // initCmd represents the init command
@@ -26,8 +29,14 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		// verbose, _ := cmd.Flags().GetBool("verbose")
+		verbose, _ := cmd.Flags().GetBool("verbose")
 
+		if verbose {
+			color.Cyan("Bwssh settings")
+			settings := viper.GetViper().AllSettings()
+			formattedSetting, _ := json.MarshalIndent(settings, "", "  ")
+			fmt.Println(string(formattedSetting))
+		}
 		bw := lib.Bw{Flags: cmd}
 
 		// check if login already
@@ -49,7 +58,7 @@ to quickly create a Cobra application.`,
 			bw.Session = loginCommandOutput[len(loginCommandOutput)-1]
 			color.Green("\nAuthenticated")
 
-		} else if bwStatus != "locked" {
+		} else if bwStatus != "unlocked" {
 			color.Red("Error: " + bwStatus)
 			return
 		}
