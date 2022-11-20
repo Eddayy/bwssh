@@ -21,13 +21,8 @@ import (
 // initCmd represents the init command
 var initCmd = &cobra.Command{
 	Use:   "init",
-	Short: "First command to run, will setup authentication for future access",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Short: "Setup authentication and designated ssh-agent folder ",
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		verbose, _ := cmd.Flags().GetBool("verbose")
 
@@ -43,10 +38,12 @@ to quickly create a Cobra application.`,
 		bwStatus := bw.CheckStatus()
 		if bwStatus == "locked" {
 			if err := bw.Unlock(); err != nil {
+				cobra.CheckErr(err)
 				return
 			}
 		} else if bwStatus == "unauthenticated" {
 			color.Red(bwStatus)
+			fmt.Println("Start login flow")
 			var loginCommandBuffer bytes.Buffer
 			loginCommand := exec.Command("bw", "login", "--raw")
 			loginCommand.Stdin = os.Stdin
@@ -59,11 +56,12 @@ to quickly create a Cobra application.`,
 			color.Green("\nAuthenticated")
 
 		} else if bwStatus != "unlocked" {
-			color.Red("Error: " + bwStatus)
+			cobra.CheckErr(bwStatus)
 			return
 		}
 
-		if err := bw.ListFolders(); err != nil {
+		if err := bw.SelectFolder(); err != nil {
+			cobra.CheckErr(err)
 			return
 		}
 		color.Green("Setup all done!")

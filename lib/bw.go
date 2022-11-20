@@ -16,11 +16,25 @@ import (
 
 type Bw struct {
 	Session string
-	Folder  Folder
 	Flags   *cobra.Command
 }
 
-func (bw *Bw) ListFolders() error {
+func (bw *Bw) ValidateFolder() {
+	// for some reason get folder doesnt work with session as for 21/11/22
+	result := bw.ExecuteCommand("list folders")
+	var folders []Folder
+	json.Unmarshal([]byte(result), &folders)
+
+	for i := range folders {
+		if folders[i].Id == viper.GetString("BWSSH_FOLDER_ID") {
+			// Found!
+			return
+		}
+	}
+	bw.SelectFolder()
+}
+
+func (bw *Bw) SelectFolder() error {
 	result := bw.ExecuteCommand("list folders")
 
 	var folders []Folder
@@ -41,11 +55,9 @@ func (bw *Bw) ListFolders() error {
 	}
 	i, _, err := prompt.Run()
 	if err != nil {
-		fmt.Println(err)
 		return err
 	}
-	bw.Folder = folders[i]
-	viper.Set("folder_id", folders[i].Id)
+	viper.Set("BWSSH_FOLDER_ID", folders[i].Id)
 	viper.WriteConfig()
 	return nil
 }
@@ -80,16 +92,16 @@ func (bw *Bw) CheckStatus() string {
 	result := bw.ExecuteCommand("status")
 	var bwStatus map[string]interface{}
 	json.Unmarshal([]byte(result), &bwStatus)
-
-	if bwStatus["status"].(string) != "unlocked" {
+	if bwStatus["status"] == nil || bwStatus["status"].(string) != "unlocked" {
 		viper.Set("BW_SESSION", "")
 		viper.WriteConfig()
+		return "locked"
 	}
 
 	return bwStatus["status"].(string)
 }
 
-func (bw Bw) ExecuteCommand(command string, env ...string) string {
+func (bw *Bw) ExecuteCommand(command string, env ...string) string {
 	verbose, _ := bw.Flags.Flags().GetBool("verbose")
 
 	cmd := exec.Command("bw", strings.Split(command, " ")...)
